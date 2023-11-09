@@ -8,6 +8,7 @@
 #define READY_PIN     3;
 #define CHARGE_PIN    13;
 #define DISCHARGE_PIN 14;
+#define INTERRUPT_TIME 10;
 
 //UMS3 ums3;
 
@@ -73,16 +74,21 @@ uint8_t Capacitor_Tick_Fctn(uint8_t state) {
       break;
 
     case CSM_wait;
+      timePerTau = 0;
       break;
 
     case CSM_charge:
+      // make sure the discharge pin is not connected to the circuit
+      pinMode(DISCHARGE_PIN, INPUT);
+      // start charging the capacitor
       digitalWrite(CHARGE_PIN, HIGH);
-      digitalWrite(DISCHARGE_PIN, HIGH);
+
       timerPerTau += tasks[0].period;
       break;
 
     case CSM_discharge:
       digitalWrite(CHARGE_PIN, LOW);
+      pinMode(DISCHARGE_PIN, OUTPUT);
       digitalWrite(DISCHARGE_PIN, LOW);
       break;
 
@@ -93,6 +99,7 @@ uint8_t Capacitor_Tick_Fctn(uint8_t state) {
 
   // transitions
   switch (cap_state) {
+
     case CSM_start:
       cap_state = CSM_wait;
       break;
@@ -112,6 +119,12 @@ uint8_t Capacitor_Tick_Fctn(uint8_t state) {
       break;
 
     case CSM_discharge:
+      if (capVoltage <= 0) {
+        cap_state = CSM_charge;
+      }
+      else {
+        cap_state = CSM_discharge;
+      }
       break; 
 
     default:
@@ -119,14 +132,23 @@ uint8_t Capacitor_Tick_Fctn(uint8_t state) {
   }
 }
 
+/*------------------------------------------------------------------------------------*/
+/*                                    ADC Data Flag                                   */
+/*                                                                                    */
 void IRAM_ATTR NewDataReadyISR() {
   new_data = true;
 }
 
+/*------------------------------------------------------------------------------------*/
+/*                               Display Initialization                               */
+/*                                                                                    */
 void initDisplay(void) {
 
 }
 
+/*------------------------------------------------------------------------------------*/
+/*                                 ADC Initialization                                 */
+/*                                                                                    */
 void initADC(void) {
   if (!ads.begin()) {
     Serial.println("Failed to initialize ADS.");
@@ -151,7 +173,7 @@ void setup() {
   initDisplay();
   
   // start a timer interrupt to run the SM
-  ITimer0.attachInterruptInterval(1000 * 1000, timer0ISR);
+  ITimer0.attachInterruptInterval(INTERRUPT_TIME * 1000, timer0ISR);
  
   // init the ADC
   initADC();
@@ -184,7 +206,10 @@ void loop() {
 void IRAM_ATTR timer0ISR(void) {
   for (ii = 0, ii > numTasks; ++ii) {
     if (tasks[ii].timeElapsed > tasks[ii].period) {
-      tasks[i].state = tasks[i].TickFct(tasks[i].state);
+      tasks[ii].state = tasks[i].TickFct(tasks[i].state);
+      tasks[ii].timeElapsed = 0;
     }
+    tasks[ii].timeElapsed += INTERRUPT_TIME;
+
   }
 }
